@@ -85,8 +85,12 @@ class ReStructuredTextMarkup(AbstractMarkup):
 			'syntax_highlight': 'short',
 		})
 		AbstractMarkup.__init__(self, filename)
-		from docutils.core import publish_parts
-		self._publish_parts = publish_parts
+		from docutils.core import Publisher
+		from docutils.io import StringInput, StringOutput
+		self._publisher = Publisher(source_class=StringInput,
+                                    destination_class=StringOutput)
+		self._publisher.set_components('standalone', 'restructuredtext', 'html')
+		self._publisher.process_programmatic_settings(None, self.overrides, None)
 		self._register_sphinx_directives()
 
 	def _register_sphinx_directives(self):
@@ -102,13 +106,16 @@ class ReStructuredTextMarkup(AbstractMarkup):
 			directives.register_directive('graphviz', Graphviz)
 			directives.register_directive('graph', GraphvizSimple)
 			directives.register_directive('digraph', GraphvizSimple)
-			HTMLTranslator.visit_graphviz = html_visit_graphviz
-			HTMLTranslator.builder = SphinxBuilder()
+			class SphinxTranslator(self._publisher.writer.translator_class):
+				visit_graphviz = html_visit_graphviz
+				builder = SphinxBuilder()
+			self._publisher.writer.translator_class = SphinxTranslator
 			Values.env = SphinxEnvironment(self.filename)
 
 	def convert(self, text):
-		parts = self._publish_parts(text, source_path=self.filename,
-			writer_name='html', settings_overrides=self.overrides)
+		self._publisher.set_source(text, source_path=self.filename)
+		output = self._publisher.publish()
+		parts = self._publisher.writer.parts
 
 		# Determine head
 		head = parts['head']
